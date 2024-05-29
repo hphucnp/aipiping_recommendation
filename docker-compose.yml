@@ -1,63 +1,125 @@
-version: '3.8'
-
 services:
-  web:
-    build: .
-    container_name: web
+  app:
+    build:
+      context: .
+      dockerfile: app.Dockerfile
+    image: app
+    container_name: app
     ports:
       - "3000:3000"
     environment:
       - MONGODB_URI=mongodb://mongo:27017
-      - KAFKA_SERVER=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVER=kafka:9092
     depends_on:
       - mongo
+      - worker
       - kafka
-      - zookeeper
-
-  mongo:
-    image: mongo
-    container_name: mongo
-    ports:
-      - "27017:27017"
-
-  zookeeper:
-    image: wurstmeister/zookeeper
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-
-  kafka:
-    image: wurstmeister/kafka
-    container_name: kafka
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
+      - create-topics
+    profiles:
+      - dev
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
     container_name: worker
-    command: ["python", "app/worker/tasks.py"]
     environment:
       - MONGODB_URI=mongodb://mongo:27017
-      - KAFKA_SERVER=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVER=kafka:9092
+    expose:
+      - "3001"
     depends_on:
       - mongo
       - kafka
-      - zookeeper
-  prefect:
-    build:
-      context: .
-      dockerfile: Dockerfile.prefect
-    container_name: prefect
-    environment:
-      - PREFECT__BACKEND=server
-      - PREFECT__SERVER__HOST=http://prefect-server:4200
-      - MONGODB_URI=mongodb://mongo:27017
-      - OPENAI_MODEL=text-davinci-003
+      - create-topics
+    profiles:
+      - dev
+
+  mongo:
+    image: mongo:8.0.0-rc4
+    container_name: mongo
+    volumes:
+      - mongo-data:/data/db
+    expose:
+      - "27017"
+    ports:
+      - "27017:27017"
+    profiles:
+      - local-dev
+      - dev
+
+  create-topics:
+    image: confluentinc/cp-kafka:latest
+    container_name: create-topics
     depends_on:
-      - mongo
+      - kafka
+    command: >
+      bash -c "
+        until kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1 --topic JUST_DO_IT; do sleep 1; done
+      "
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092, CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CLUSTER_ID: "hZqHSd2PT5GPvv2Bya-Nsg=="
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: "hZqHSd2PT5GPvv2Bya-Nsg=="
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    expose:
+      - "9092"
+      - "9093"
+    profiles:
+      - local-dev
+      - dev
+#    command: >
+#        sh -c "
+#          /etc/confluent/docker/run &&
+#          /usr/bin/kafka-topics --create --topic JUST_DO_IT --bootstrap-server kafka:9092 --partitions 1 --replication-factor 1 &&
+#          /usr/bin/kafka-topics --list --bootstrap-server kafka:9092 &&
+#          sleep infinity
+#        "
+    entrypoint: [
+      "sh", "-c",
+      "if [ ! -f /var/lib/kafka/meta.properties ]; then
+          kafka-storage format -t 'hZqHSd2PT5GPvv2Bya-Nsg==' -c /etc/kafka/kraft/server.properties &&
+          export KAFKA_CLUSTER_ID='hZqHSd2PT5GPvv2Bya-Nsg==';
+       fi &&
+       /etc/confluent/docker/run
+       "
+    ]
+
+  kafka-ui:
+   image: provectuslabs/kafka-ui:latest
+   container_name: kafka-ui
+   ports:
+       - "8080:8080"
+   environment:
+     - KAFKA_CLUSTERS_0_NAME=local
+     - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+     - KAFKA_CLUSTERS_0_READONLY=false
+     - KAFKA_CLUSTERS_0_KRAFMODE=true
+   depends_on:
+     - kafka
+     - create-topics
+   profiles:
+     - local-dev
+     - dev
+
+volumes:
+  mongo-data:
+  kafka-data:
