@@ -1,0 +1,2 @@
+-r common.requirements.txt
+pip~=24.0

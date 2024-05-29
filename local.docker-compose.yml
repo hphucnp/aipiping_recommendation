@@ -1,0 +1,24 @@
+version: '3.8'
+services:
+  zookeeper:
+    extends:
+      service: zookeeper
+      file: docker-compose.yml
+  mongo:
+    extends:
+      service: mongo
+      file: docker-compose.yml
+    ports:
+      - "27017:27017"
+  kafka-ui:
+    extends:
+      service: kafka-ui
+      file: docker-compose.yml
+    ports:
+      - "8080:8080"
+  kafka:
+    extends:
+      service: kafka
+      file: docker-compose.yml
+    ports:
+      - "9092:9092"
