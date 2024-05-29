@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: web
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
+      - KAFKA_SERVER=kafka:9092
+    depends_on:
+      - mongo
+      - kafka
+      - zookeeper
+
+  mongo:
+    image: mongo
+    container_name: mongo
+    ports:
+      - "27017:27017"
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+
+  worker:
+    build: .
+    container_name: worker
+    command: ["python", "app/worker/tasks.py"]
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
+      - KAFKA_SERVER=kafka:9092
+    depends_on:
+      - mongo
+      - kafka
+      - zookeeper
+  prefect:
+    build:
+      context: .
+      dockerfile: Dockerfile.prefect
+    container_name: prefect
+    environment:
+      - PREFECT__BACKEND=server
+      - PREFECT__SERVER__HOST=http://prefect-server:4200
+      - MONGODB_URI=mongodb://mongo:27017
+      - OPENAI_MODEL=text-davinci-003
+    depends_on:
+      - mongo
