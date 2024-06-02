@@ -95,7 +95,7 @@ in which we can have request body for all the requests, and add suffixes like /c
 
 ## Testing
 
-1. Run the tests with Docker Compose:
+<!-- 1. Run the tests with Docker Compose:
     ```sh
     docker-compose -f docker-compose.test.yml up --build
     ```
@@ -103,4 +103,6 @@ in which we can have request body for all the requests, and add suffixes like /c
 2. To run the tests locally, you can use the following command:
     ```sh
     pytest
-    ```
+    ``` -->
+
+Not ready yet, I intend to use pytest and unittest for unit testing here
